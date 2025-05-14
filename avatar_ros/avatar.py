@@ -123,18 +123,10 @@ class FaceRenderer:
         gaze_y = eye_context.get('gazeY', 0) * 2
         open_ratio = eye_context.get('open', 1.0)
 
-        # Draw eye white
+        # Draw eye
         pygame.draw.ellipse(self.screen, 'white',
                           (cx - radius, cy - int(radius * open_ratio),
                            radius * 2, int(radius * 2 * open_ratio)))
-
-        # Draw pupil
-        if open_ratio > 0.2:  # Only draw pupil if eye is sufficiently open
-            pupil_radius = int(radius * 0.4)
-            pupil_x = int(cx + gaze_x)
-            pupil_y = int(cy + gaze_y)
-            pygame.draw.circle(self.screen, 'black',
-                             (pupil_x, pupil_y), pupil_radius)
 
     def draw_mouth(self, cx: int, cy: int, minWidth: int, maxWidth: int,
                    minHeight: int, maxHeight: int,
