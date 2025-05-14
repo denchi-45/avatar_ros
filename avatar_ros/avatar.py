@@ -1,4 +1,4 @@
-from tkinter import BOTH, YES, Tk, Canvas
+import pygame
 from typing import List, Dict, Any
 import sys
 from random import randint, uniform, gauss
@@ -6,7 +6,7 @@ import math
 from abc import ABC, abstractmethod
 from copy import deepcopy
 
-# TODO: Define FaceContext
+# Define FaceContext
 FaceContext = Dict[str, Any]
 INTERVAL = 33
 
@@ -93,12 +93,11 @@ class BreathModifier(FaceModifier):
 
 
 class FaceRenderer:
-    def __init__(self, canvas: Canvas, face_context: Dict[str, Any]) -> None:
-        self.canvas = canvas
-        self.original_width = canvas.winfo_width()
-        self.original_height = canvas.winfo_height()
+    def __init__(self, screen: pygame.Surface, face_context: Dict[str, Any]) -> None:
+        self.screen = screen
+        self.original_width = screen.get_width()
+        self.original_height = screen.get_height()
         self.current_context = face_context
-        self.all_objects: List[int] = []
         self.modifiers: List[FaceModifier] = []
         self.set_origin(320 // 2, 240 // 2)
         self.set_scale(1.0, 1.0)
@@ -117,53 +116,46 @@ class FaceRenderer:
     def draw_eyes(self, cx: int, cy: int, radius: int,
                   eye_context: Dict[str, float]):
         scale = min(self.scale_x, self.scale_y)
-        cx = self.cx + (cx - 160) * scale
-        cy = self.cy + (cy - 120) * scale
-        radius *= scale
+        cx = int(self.cx + (cx - 160) * scale)
+        cy = int(self.cy + (cy - 120) * scale)
+        radius = int(radius * scale)
         gaze_x = eye_context.get('gazeX', 0) * 2
         gaze_y = eye_context.get('gazeY', 0) * 2
+        open_ratio = eye_context.get('open', 1.0)
 
-        pupil_id = self.canvas.create_oval(
-            cx + gaze_x - radius,
-            cy + gaze_y - radius,
-            cx + gaze_x + radius,
-            cy + gaze_y + radius,
-            fill='white')
+        # Draw eye white
+        pygame.draw.ellipse(self.screen, 'white',
+                          (cx - radius, cy - int(radius * open_ratio),
+                           radius * 2, int(radius * 2 * open_ratio)))
 
-        eyelid_cover = (1 - eye_context['open']) * 2 * radius
-        if eyelid_cover > 0.1:
-            eyelid_id = self.canvas.create_rectangle(
-                cx - radius,
-                cy - radius,
-                cx + radius,
-                cy - radius + eyelid_cover,
-                fill='black')
-            self.all_objects.extend([pupil_id, eyelid_id])
-        else:
-            self.all_objects.extend([pupil_id])
+        # Draw pupil
+        if open_ratio > 0.2:  # Only draw pupil if eye is sufficiently open
+            pupil_radius = int(radius * 0.4)
+            pupil_x = int(cx + gaze_x)
+            pupil_y = int(cy + gaze_y)
+            pygame.draw.circle(self.screen, 'black',
+                             (pupil_x, pupil_y), pupil_radius)
 
     def draw_mouth(self, cx: int, cy: int, minWidth: int, maxWidth: int,
                    minHeight: int, maxHeight: int,
                    mouth_context: Dict[str, float]) -> None:
         scale = min(self.scale_x, self.scale_y)
-        cx = self.cx + (cx - 160) * scale
-        cy = self.cy + (cy - 120) * scale
-        minWidth *= scale
-        maxWidth *= scale
-        minHeight *= scale
-        maxHeight *= scale
+        cx = int(self.cx + (cx - 160) * scale)
+        cy = int(self.cy + (cy - 120) * scale)
+        minWidth = int(minWidth * scale)
+        maxWidth = int(maxWidth * scale)
+        minHeight = int(minHeight * scale)
+        maxHeight = int(maxHeight * scale)
         openRatio = mouth_context['open']
-        h = minHeight + (maxHeight - minHeight) * openRatio
-        w = minWidth + (maxWidth - minWidth) * (1 - openRatio)
-        x = cx - w / 2
-        y = cy - h / 2
-        mouth_id = self.canvas.create_rectangle(
-            x, y, x + w, y + h, fill='white')
-        self.all_objects.append(mouth_id)
+        h = int(minHeight + (maxHeight - minHeight) * openRatio)
+        w = int(minWidth + (maxWidth - minWidth) * (1 - openRatio))
+        x = cx - w // 2
+        y = cy - h // 2
+        pygame.draw.rect(self.screen, 'white', (x, y, w, h))
 
     def move_face(self, dy: float) -> None:
-        for obj_id in self.all_objects:
-            self.canvas.move(obj_id, 0, dy)
+        # In pygame, we'll redraw everything instead of moving individual objects
+        pass
 
     def update(self, interval: int) -> None:
         context = deepcopy(self.current_context)
@@ -172,21 +164,25 @@ class FaceRenderer:
         self.render(context)
 
     def render(self, context: FaceContext) -> None:
-        self.canvas.delete("all")
-        self.all_objects = []
+        self.screen.fill('black')
 
         left_eye_coords = {'cx': 90, 'cy': 93, 'radius': 8}
         right_eye_coords = {'cx': 230, 'cy': 96, 'radius': 8}
         mouth_coords = {'cx': 160, 'cy': 148, 'minWidth': 50,
                         'maxWidth': 90, 'minHeight': 8, 'maxHeight': 58}
 
+        # Apply breath effect to all coordinates
+        dy = int(context['breath'] * 3 * min(self.scale_x, self.scale_y))
+        left_eye_coords['cy'] += dy
+        right_eye_coords['cy'] += dy
+        mouth_coords['cy'] += dy
+
         self.draw_eyes(**left_eye_coords, eye_context=context['eyes']['left'])
         self.draw_eyes(**right_eye_coords,
                        eye_context=context['eyes']['right'])
         self.draw_mouth(**mouth_coords, mouth_context=context['mouth'])
 
-        dy = context['breath'] * 3 * min(self.scale_x, self.scale_y)
-        self.move_face(dy)
+        pygame.display.flip()
 
 
 default_context = {
@@ -200,38 +196,40 @@ default_context = {
 
 
 class AvatarFace():
-    def __init__(self, root):
-        self.root = root
-        self.root.bind("<Configure>", self.on_resize)
-        self.root.protocol("WM_DELETE_WINDOW", self.on_closing)
-        self.canvas = canvas = Canvas(root, width=320, height=240, bg='black')
-        self.canvas.pack(fill=BOTH, expand=YES)
-        self.face_renderer = face_renderer = FaceRenderer(
-            canvas, default_context)
+    def __init__(self):
+        pygame.init()
+        self.screen = pygame.display.set_mode((320, 240), pygame.RESIZABLE)
+        pygame.display.set_caption('Avatar')
+        self.face_renderer = FaceRenderer(self.screen, default_context)
         self.running = False
         self.is_closed = False
+
         blink_modifier = BlinkModifier(
             open_min=400, open_max=5000, close_min=200, close_max=400)
         breath_modifier = BreathModifier(duration=6000)
         saccade_modifier = SaccadeModifier(
             update_min=300, update_max=2000, gain=0.2)
 
-        face_renderer.add_modifier(blink_modifier)
-        face_renderer.add_modifier(breath_modifier)
-        face_renderer.add_modifier(saccade_modifier)
+        self.face_renderer.add_modifier(blink_modifier)
+        self.face_renderer.add_modifier(breath_modifier)
+        self.face_renderer.add_modifier(saccade_modifier)
 
     def is_alive(self):
-        return not (self.is_closed)
+        return not self.is_closed
 
-    def on_closing(self):
+    def close(self):
         self.is_closed = True
-        self.root.quit()
+        pygame.quit()
 
-    def on_resize(self, event):
-        self.canvas.delete('all')
-        w, h = event.width, event.height
-        self.face_renderer.set_origin(w // 2, h // 2)
-        self.face_renderer.set_scale(w / 320, h / 240)
+    def handle_events(self):
+        for event in pygame.event.get():
+            if event.type == pygame.QUIT:
+                self.close()
+            elif event.type == pygame.VIDEORESIZE:
+                self.screen = pygame.display.set_mode(
+                    (event.w, event.h), pygame.RESIZABLE)
+                self.face_renderer.set_origin(event.w // 2, event.h // 2)
+                self.face_renderer.set_scale(event.w / 320, event.h / 240)
 
     def set_mouth_open(self, open):
         if open < 0 or math.isnan(open):
@@ -243,24 +241,25 @@ class AvatarFace():
     def begin(self):
         self.running = True
         self.loop()
-        self.root.mainloop()
 
     def stop(self):
         self.running = False
-        self.root.quit()
+        self.close()
 
     def loop(self, interval=INTERVAL):
         if not self.running:
             return
+        self.handle_events()
         self.face_renderer.update(INTERVAL)
-        self.root.after(INTERVAL, self.loop)
 
 
 if __name__ == "__main__":
-    def exit_program(event):
-        sys.exit(0)
-
-    root = Tk()
-    root.bind('<Control-c>', exit_program)
-    avatar: AvatarFace = AvatarFace(root)
+    avatar = AvatarFace()
     avatar.begin()
+    clock = pygame.time.Clock()
+
+    while avatar.is_alive():
+        avatar.loop()
+        clock.tick(1000 // INTERVAL)  # Maintain frame rate
+
+    pygame.quit()

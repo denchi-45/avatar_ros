@@ -1,7 +1,7 @@
 import rclpy
 from rclpy.node import Node
-from tkinter import Tk
 from std_msgs.msg import Float32
+import pygame
 
 from .avatar import AvatarFace
 
@@ -12,8 +12,7 @@ class AvatarNode(Node):
     def __init__(self):
         super().__init__('avatar')
 
-        self.root = Tk()
-        self.avatar = AvatarFace(self.root)
+        self.avatar = AvatarFace()
 
         self.mouth_subscription = self.create_subscription(
             Float32,
@@ -23,7 +22,9 @@ class AvatarNode(Node):
         )
 
         self.timer = self.create_timer(
-            INTERVAL / 1000, self.update) 
+            INTERVAL / 1000, self.update)
+
+        self.clock = pygame.time.Clock()
 
     def callback_mouth(self, msg):
         self.get_logger().info('Received mouth data: %f' % msg.data)
@@ -34,19 +35,21 @@ class AvatarNode(Node):
             self.destroy_node()
             return
 
-        self.root.update_idletasks()
-        self.root.update()
-        self.avatar.face_renderer.update(INTERVAL)
+        self.avatar.loop()
+        self.clock.tick(1000 // INTERVAL)
 
 
 def main(args=None):
     rclpy.init(args=args)
+    pygame.init()
     node = AvatarNode()
+    node.avatar.begin()
 
     while rclpy.ok() and node.avatar.is_alive():
         rclpy.spin_once(node)
     node.get_logger().info("Shutting down")
     node.destroy_node()
+    pygame.quit()
     rclpy.shutdown()
 
 
