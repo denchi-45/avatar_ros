@@ -195,6 +195,7 @@ class AvatarFace():
         self.face_renderer = FaceRenderer(self.screen, default_context)
         self.running = False
         self.is_closed = False
+        self.fullscreen = False
 
         blink_modifier = BlinkModifier(
             open_min=400, open_max=5000, close_min=200, close_max=400)
@@ -217,7 +218,19 @@ class AvatarFace():
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
                 self.close()
-            elif event.type == pygame.VIDEORESIZE:
+            elif event.type == pygame.KEYDOWN:
+                if event.key == pygame.K_F11:
+                    self.fullscreen = not self.fullscreen
+                    if self.fullscreen:
+                        self.screen = pygame.display.set_mode(
+                            (0, 0), pygame.FULLSCREEN | pygame.NOFRAME)
+                    else:
+                        self.screen = pygame.display.set_mode(
+                            (320, 240), pygame.RESIZABLE)
+                    w, h = self.screen.get_size()
+                    self.face_renderer.set_origin(w // 2, h // 2)
+                    self.face_renderer.set_scale(w / 320, h / 240)
+            elif event.type == pygame.VIDEORESIZE and not self.fullscreen:
                 self.screen = pygame.display.set_mode(
                     (event.w, event.h), pygame.RESIZABLE)
                 self.face_renderer.set_origin(event.w // 2, event.h // 2)
